@@ -1,4 +1,4 @@
-# Who Gets Allured to the Government Policies, and Who Steps Away?
+# Who Gets Allured to Government Policies, and Who Steps Away?
 
 The data and materials required to verify the computational reproducibility of the results, procedures, and analyses in this article will be available here by the time the article is published.
 
