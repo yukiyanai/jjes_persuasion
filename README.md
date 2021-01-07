@@ -21,7 +21,7 @@ The data to reproduce the results presented in the article are in the following 
 
 - [jjes2020_ShigemuraSongYanai.csv](jjes2020_ShigemuraSongYanai.csv)
 
-### Varialbes
+### Variables
 
 The data set contains the following variables.
 
@@ -46,7 +46,7 @@ The following six variables are the attributes used in our conjoint experiment. 
 
 ## R Codes
 
-All R codes required to reproduce the results presented in the article are available in the following R markdown and HTML files.
+R codes to reproduce the results presented in the article are available in the following R Markdown and HTML files.
 
 - [replication_jjes2020_SSY.Rmd](replication_jjes2020_SSY.Rmd)
 - [replication_jjes2020_SSY.html](replication_jjes2020_SSY.html)
