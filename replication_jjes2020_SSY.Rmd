@@ -1,0 +1,246 @@
+---
+title: "Replication Codes for \"Who Gets Close to the Government Policies, and Who Steps Away?\""
+author: "[Sohei Shigemura](https://soheishigemura.com/), [Jaehyun Song](https://www.jaysong.net), [Yuki Yanai](https://yukiyanai.github.io)"
+date: "2021-01-07"
+output: 
+  html_document:
+    highlight: "tango"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+```
+
+This file contains replication codes for: [Sohei Shigemura](https://soheishigemura.com/), [Jaehyun Song](https://www.jaysong.net), and [Yuki Yanai](https://yukiyanai.github.io). 2020. "Who Gets Close to the Government Policies, and Who Steps Away?" *Japanese Journal of Electoral Studies* [選挙研究] 36(2): 139-150.
+
+
+```{r}
+if (!require(pacman)) install.packages("pacman")
+pacman::p_load(tidyverse, cjoint, cregg)
+```
+
+
+```{r}
+Raw_df <- read_csv("https://raw.githubusercontent.com/yukiyanai/jjes_persuasion/master/jjes2020_ShigemuraSongYanai.csv")
+```
+
+
+```{r}
+q_abe <- with(Raw_df, 
+              quantile(temp_Abe, prob = c(0.25, 0.75)))
+
+Raw_df <- Raw_df %>%
+  mutate(
+    Temp_Abe   = case_when(temp_Abe >= q_abe[2] ~ "high",
+                           temp_Abe <= q_abe[1] ~ "low",
+                           TRUE                 ~ "middle"),
+    across(c(Group, tax:status, Temp_Abe), factor),
+    # Reorder levels
+    # Baseline = what each article does NOT state
+    emperor    = factor(emperor,    levels = c("deny", "approve")),
+    immigrants = factor(immigrants, levels = c("accept", "refuse")),
+    childcare  = factor(childcare,  levels = c("not improve", "improve"))
+    )
+```
+
+---
+
+## Distibution
+
+Figure 2.
+```{r}
+Temp_Dist_Plot <- ggplot() +
+  geom_polygon(aes(x = c(-100, 16, 16, -100), 
+                   y = c(-100, -100, 600, 600)),
+               fill = "gray90") +
+  geom_polygon(aes(x = c(150, 66, 66, 150), 
+                   y = c(-100, -100, 600, 600)),
+               fill = "gray90") +
+  geom_histogram(data = Raw_df %>% distinct(ID, temp_Abe),
+                 aes(x = temp_Abe), color = "black", 
+                 binwidth = 5) + 
+  labs(x = "Feeling Thermometer Rating",
+       y = "Count") + 
+  scale_x_continuous(sec.axis = sec_axis( ~ .,
+                                         breaks = c(8, 83),
+                                         labels = c("Anit-Abe", 
+                                                    "Pro-Abe"))) +
+  coord_cartesian(xlim = c(0, 100), ylim = c(0, 550)) +
+  theme_bw() +
+  theme(text = element_text(size = 12))
+
+plot(Temp_Dist_Plot)
+```
+
+---
+
+## Group Assignmnet
+
+```{r}
+# Number of Respondents: 2940
+length(unique(Raw_df$ID))
+
+# Group Assignment
+Raw_df %>% 
+  distinct(ID, Group) %>%
+  separate(col  = Group, into = c("Treat", "Justification"),
+           sep  = "_", fill = "right") %>%
+  group_by(Treat, Justification) %>%
+  summarise(N       = n(), 
+            .groups = "drop") %>%
+  pivot_wider(names_from = Treat, values_from = N)
+```
+
+---
+
+## Conjoint feature frequencies
+
+```{r, fig.align = "center", fig.height = 6}
+Raw_df %>%
+  cj_freqs(selected ~ emperor + immigrants + childcare + tax + party +
+             age_candidate + gender_candidate + status,
+           level_order = "descending") %>%
+  plot() +
+  theme(legend.position = "none")
+```
+
+---
+
+## AMCEs on the control
+
+Figure 3
+```{r}
+Control_AMCE <- Raw_df %>%
+  filter(Group == "Control") %>%
+  cj(selected ~ tax + emperor + immigrants + childcare + party +
+       age_candidate + gender_candidate + status, 
+     id = ~ID, estimate = "amce") %>% 
+  filter(feature %in% c("emperor", "immigrants", "childcare"),
+         !is.na(std.error)) %>% 
+  mutate(Attr = c("Female Emperor:\nApprove", 
+                  "Immigrants:\nRefuse", 
+                  "Childcare:\nImprove"),
+         Attr = fct_inorder(Attr),
+         Sig  = if_else(lower * upper > 0, "Sig", "Insig")) %>%
+  ggplot() +
+  geom_hline(yintercept = 0, linetype = 2) +
+  geom_pointrange(aes(x = fct_rev(Attr), y = estimate, 
+                      ymin = lower, ymax = upper, color = Sig),
+                  show.legend = FALSE) +
+  scale_color_manual(values = c("Sig" = "black", "Insig" = "gray70")) +
+  labs(x = "", y = "AMCEs") +
+  coord_flip() +
+  theme_bw() +
+  theme(text = element_text(size = 12))
+
+plot(Control_AMCE)
+```
+
+---
+
+## Persuasion Effects
+
+Figure 4.
+```{r}
+Framing_Effect_fit <- Raw_df %>%
+  cj(selected ~ tax + emperor + immigrants + childcare + party +
+       age_candidate + gender_candidate + status, 
+     id = ~ ID, estimate = "amce_diff",
+     by = ~ Group)
+
+Framing_Effect_plot <- Framing_Effect_fit %>%
+  select(Group, feature, level, estimate, lower, upper) %>% 
+  filter(feature %in% c("emperor", "immigrants", "childcare"),
+         (feature == "emperor" & str_sub(Group, 1, 2) == "T1") | 
+           (feature == "immigrants" & str_sub(Group, 1, 2) == "T2") | 
+           (feature == "childcare" & str_sub(Group, 1, 2) == "T3")) %>%
+  separate(col = Group, into = c("Treat", "Justification"), 
+           sep = "_", fill = "right") %>%
+  mutate(Justification = ifelse(is.na(Justification), "No", Justification),
+         Justification = factor(Justification,
+                                levels = c("No", "Left", "Right"),
+                                labels = c("No",
+                                           "Leftish",
+                                           "Rightish")),
+         feature       = factor(feature, 
+                                levels = c("emperor", "immigrants", "childcare"),
+                                labels = c("Female Emperor Approval", 
+                                           "Immigrants Refusal", 
+                                           "Childcare Expansion")),
+         Sig           = if_else(lower * upper > 0, "Sig", "Insig")) %>%
+  ggplot() +
+  geom_hline(yintercept = 0) +
+  geom_pointrange(aes(x = fct_rev(Justification), 
+                      y = estimate, ymin = lower, ymax = upper,
+                      color = Sig), show.legend = FALSE) +
+  scale_color_manual(values = c("Sig" = "black", "Insig" = "gray70")) +
+  scale_y_continuous(breaks = seq(-0.1, 0.1, by = 0.05)) +
+  labs(x = "Justfication", y = "Differences of AMCEs") +
+  facet_wrap(~feature) +
+  coord_flip() +
+  theme_bw() +
+  theme(text = element_text(size = 12))
+
+plot(Framing_Effect_plot)
+```
+
+---
+
+## Conditioning on Attitudes toward Shinzo Abe
+
+Figure 5.
+```{r}
+Temp_list <- list()
+index <- 1
+
+for (i in 1:3) {
+  for (j in 1:3) {
+    Temp <- Raw_df %>%
+      filter(Group %in% list(c("Control", "T1", "T1_Right", "T1_Left"),
+                             c("Control","T2", "T2_Right", "T2_Left"),
+                             c("Control","T3", "T3_Right", "T3_Left"))[[i]],
+             Temp_Abe == c("low", "middle", "high")[j]) %>% 
+      mutate(Group    = fct_drop(Group)) %>%
+      cj(selected ~ tax + emperor + immigrants + childcare + party +
+           age_candidate + gender_candidate + status, 
+         id = ~ ID, estimate = "amce_diff",
+         by = ~ Group) %>% 
+      filter(feature == c("emperor", "immigrants", "childcare")[i]) %>%
+      select(Group, level, estimate, lower, upper) %>%
+      mutate(Temp_Abe = c("low", "middle", "high")[j],
+             Treat    = c("Emperor", "Immigrants", "Childcare")[i])
+    
+    Temp_list[[index]] <- Temp
+    index <- index + 1
+  }
+}
+
+Conditioned_AMCE <- bind_rows(Temp_list) %>%
+  mutate(Temp_Abe = factor(Temp_Abe, levels = c("low", "middle", "high"),
+                           labels = c("Anti-Abe", "Middle", "Pro-Abe")),
+         Treat    = fct_inorder(Treat),
+         Temp_Abe = fct_inorder(Temp_Abe)) %>%
+  separate(col = Group, into = c("Group", "Justification"),
+           fill = "right") %>%
+  mutate(Justification = if_else(is.na(Justification), "No", 
+                                 paste0(Justification, "ish")),
+         Justification = fct_inorder(Justification),
+         Sig           = case_when(lower * upper > 0 ~ "Significant",
+                                   TRUE              ~ "Insignificant")) %>%
+  ggplot() +
+  geom_hline(yintercept = 0) +
+  geom_pointrange(aes(x = fct_rev(Justification), 
+                      y = estimate, ymin = lower, ymax = upper,
+                      color = Sig), show.legend = FALSE) +
+  scale_color_manual(values = c("Significant"   = "black", 
+                                "Insignificant" = "gray70")) +
+  labs(y = "Differences of AMCEs", x = "Justification") +
+  coord_flip() +
+  facet_grid(Treat ~ Temp_Abe) +
+  theme_bw() +
+  theme(text = element_text(size = 12))
+
+plot(Conditioned_AMCE)
+```
